@@ -1,0 +1,36 @@
+---
+- name: Gather installed Java packages
+  hosts: all
+  gather_facts: yes
+  vars:
+    java_pkg_regex: "java.*"
+  tasks:
+    - name: Get hostname
+      set_fact:
+        hostname: "{{ inventory_hostname }}"
+    - name: Get installed Java packages
+      package_facts:
+        manager: auto
+      register: package_facts
+    - name: Filter installed Java packages
+      set_fact:
+        java_packages: "{{ package_facts.packages | json_query('[?name | regex_match(`' + java_pkg_regex + '`) == `true`]') }}"
+    - name: Save Java packages to CSV
+      csv:
+        path: "/path/to/java_packages_{{ ansible_date_time.date }}.csv"
+        delimiter: ","
+        header_row: true
+        columns:
+          - Hostname
+          - Java Packages
+        body:
+          - Hostname: "{{ hostname }}"
+            Java Packages: "{{ java_packages | map(attribute='name') | join(', ') }}"
+    - name: Send email with CSV file
+      mail:
+        subject: "Installed Java Packages on {{ hostname }}"
+        body: "Please see attached file for a list of installed Java packages on {{ hostname }}"
+        to: "recipient@example.com"
+        from: "sender@example.com"
+        attach:
+          - "/path/to/java_packages_{{ ansible_date_time.date }}.csv"
