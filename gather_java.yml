@@ -1,36 +1,38 @@
----
-- name: Gather installed Java packages
+- name: Gather Java package facts
   hosts: all
-  gather_facts: yes
+  gather_facts: true
   vars:
-    java_pkg_regex: "java.*"
+    java_packages:
+      - java
+      - jdk
+      - jre
   tasks:
-    - name: Get hostname
-      set_fact:
-        hostname: "{{ inventory_hostname }}"
-    - name: Get installed Java packages
+    - name: Gather package facts
       package_facts:
         manager: auto
       register: package_facts
-    - name: Filter installed Java packages
+
+    - name: Filter for Red Hat 7 and above
       set_fact:
-        java_packages: "{{ package_facts.packages | json_query('[?name | regex_match(`' + java_pkg_regex + '`) == `true`]') }}"
-    - name: Save Java packages to CSV
-      csv:
-        path: "/path/to/java_packages_{{ ansible_date_time.date }}.csv"
-        delimiter: ","
-        header_row: true
-        columns:
-          - Hostname
-          - Java Packages
-        body:
-          - Hostname: "{{ hostname }}"
-            Java Packages: "{{ java_packages | map(attribute='name') | join(', ') }}"
-    - name: Send email with CSV file
+        redhat: "{{ ansible_facts['distribution'] == 'RedHat' and ansible_facts['distribution_major_version'] | int >= 7 }}"
+
+    - name: Filter for Java packages
+      set_fact:
+        java_installed: "{{ package_facts.packages | selectattr('name', 'in', java_packages) | map(attribute='name') | list }}"
+
+    - name: Write Java package facts to CSV file
+      lineinfile:
+        path: /tmp/java_packages.csv
+        line: "{{ ansible_facts['hostname'] }},{{ java_installed | join(',') }}"
+      when: redhat and java_installed
+
+    - name: Email Java package facts CSV file
       mail:
-        subject: "Installed Java Packages on {{ hostname }}"
-        body: "Please see attached file for a list of installed Java packages on {{ hostname }}"
-        to: "recipient@example.com"
-        from: "sender@example.com"
+        host: smtp.example.com
+        port: 25
+        to: admin@example.com
+        subject: Java package facts
+        body: Java package facts are attached.
         attach:
-          - "/path/to/java_packages_{{ ansible_date_time.date }}.csv"
+          - /tmp/java_packages.csv
+      when: redhat and java_installed
