@@ -18,7 +18,7 @@
 
     - name: Filter for Java packages
       set_fact:
-        java_installed: "{{ package_facts.packages | selectattr('name', 'in', java_packages) | map(attribute='name') | list }}"
+        java_installed: "{{ package_facts.packages | selectattr('name', 'in', java_packages) | map(attribute='name') | list | default([]) }}"
 
     - name: Write Java package facts to CSV file
       lineinfile:
