@@ -25,7 +25,7 @@
 
     - name: Filter for Java packages
       set_fact:
-        java_installed: "{{ java_installed.stdout_lines | default([]) }}"
+        java_installed: "{{ rpm_output.stdout | regex_replace(' +', '\n') | list }}"
         java_installed_packages: "{{ java_installed.stdout_lines | map('split', '-') | map('first') | map('trim') | list | default([]) }}"
 
     - name: Write Java package facts to CSV file
