@@ -8,15 +8,21 @@
       - jre
     output_host: "{{ groups['collection'][0] }}"
   tasks:
+    - name: Get installed Java packages
+      command: rpm -qa | grep "{{ java_packages | join(' ') }}"
+      register: java_packages_output
+      ignore_errors: yes
+
     - name: Detect RPM database corruption
       command: rpm --rebuilddb --quiet
       ignore_errors: yes
       register: rpm_rebuild_output
-      changed_when: rpm_rebuild_output.rc == 0
+      changed_when: rpm_rebuild_output.rc == 0 and java_packages_output.rc != 0
 
-    - name: Get installed Java packages
+    - name: Get installed Java packages (retry after RPM repair)
       command: rpm -qa | grep "{{ java_packages | join(' ') }}"
       register: java_packages_output
+      when: rpm_rebuild_output.changed
 
     - name: Filter for Red Hat 7 and above
       set_fact:
