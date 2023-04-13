@@ -1,11 +1,13 @@
 - name: Gather Java package facts
   hosts: all
   gather_facts: true
+
   vars:
     java_packages:
       - java
       - jdk
       - jre
+
   tasks:
     - name: Gather package facts
       package_facts:
@@ -22,17 +24,7 @@
 
     - name: Write Java package facts to CSV file
       lineinfile:
-        path: /tmp/java_packages.csv
+        path: "/var/tmp/java_packages_{{ ansible_date_time.date }}.csv"
         line: "{{ ansible_facts['hostname'] }},{{ java_installed | join(',') }}"
-      when: redhat and java_installed
-
-    - name: Email Java package facts CSV file
-      mail:
-        host: smtp.example.com
-        port: 25
-        to: admin@example.com
-        subject: Java package facts
-        body: Java package facts are attached.
-        attach:
-          - /tmp/java_packages.csv
+        create: true
       when: redhat and java_installed
