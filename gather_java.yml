@@ -6,7 +6,14 @@
       - java
       - jdk
       - jre
+    output_host: "{{ groups['collection'][0] }}"
   tasks:
+    - name: Detect RPM database corruption
+      command: rpm --rebuilddb --quiet
+      ignore_errors: yes
+      register: rpm_rebuild_output
+      changed_when: rpm_rebuild_output.rc == 0
+
     - name: Get installed Java packages
       command: rpm -qa | grep "{{ java_packages | join(' ') }}"
       register: java_packages_output
@@ -20,7 +27,8 @@
         java_installed: "{{ java_packages_output.stdout_lines }}"
 
     - name: Write Java package facts to CSV file
+      delegate_to: "{{ output_host }}"
       lineinfile:
-        path: /tmp/java_packages.csv
+        dest: /opt/java_packages.csv
         line: "{{ ansible_facts['hostname'] }},{{ java_installed | join(',') }}"
       when: redhat and java_installed
