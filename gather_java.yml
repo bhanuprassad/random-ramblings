@@ -1,18 +1,15 @@
 - name: Gather Java package facts
   hosts: all
   gather_facts: true
-
   vars:
     java_packages:
       - java
       - jdk
       - jre
-
   tasks:
-    - name: Gather package facts
-      package_facts:
-        manager: auto
-      register: package_facts
+    - name: Get installed Java packages
+      command: rpm -qa | grep "{{ java_packages | join(' ') }}"
+      register: java_packages_output
 
     - name: Filter for Red Hat 7 and above
       set_fact:
@@ -20,15 +17,10 @@
 
     - name: Filter for Java packages
       set_fact:
-        java_installed: "{{ package_facts.packages | default([]) | selectattr('name', 'in', java_packages) | map(attribute='name') | list | default([]) }}"
-    
-    - name: Debug Java packages
-      debug:
-        var: java_installed
+        java_installed: "{{ java_packages_output.stdout_lines }}"
 
     - name: Write Java package facts to CSV file
       lineinfile:
-        path: "/var/tmp/java_packages_{{ ansible_date_time.date }}.csv"
+        path: /tmp/java_packages.csv
         line: "{{ ansible_facts['hostname'] }},{{ java_installed | join(',') }}"
-        create: true
       when: redhat and java_installed
