@@ -5,14 +5,14 @@
   gather_facts: false
 
   vars:
-    mount_point: "/app"  # Target mount point
+    mount_point: "/app"  # Specify the mount point
 
   tasks:
     - name: Gather detailed block device mappings
       ansible.builtin.shell: |
-        lsblk -o NAME,HCTL,MOUNTPOINT,PKNAME -P | grep 'MOUNTPOINT="{{ mount_point }}"'
+        lsblk -o NAME,PKNAME,HCTL,MOUNTPOINT -P | grep 'MOUNTPOINT="{{ mount_point }}"'
       register: mount_details
-      ignore_errors: true
+      changed_when: false
 
     - name: Debug mount details
       ansible.builtin.debug:
@@ -25,8 +25,7 @@
 
     - name: Parse PKNAME from mount details
       ansible.builtin.set_fact:
-        pkname: "{{ mount_details.stdout | regex_search('PKNAME=\"([^\"]+)\"', '\\1') | default('') }}"
-      ignore_errors: true
+        pkname: "{{ mount_details.stdout | regex_search('PKNAME=\"([^"]+)\"', '\\1') | default('') }}"
 
     - name: Debug PKNAME
       ansible.builtin.debug:
@@ -39,7 +38,7 @@
 
     - name: Extract SCSI HCTL
       ansible.builtin.set_fact:
-        scsi_hctl: "{{ scsi_details.stdout | regex_search('HCTL=\"([^\"]+)\"', '\\1') | default('N/A') }}"
+        scsi_hctl: "{{ scsi_details.stdout | regex_search('HCTL=\"([^"]+)\"', '\\1') | default('N/A') }}"
 
     - name: Display SCSI and physical disk information
       ansible.builtin.debug:
