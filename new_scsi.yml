@@ -1,0 +1,32 @@
+---
+- hosts: all
+  become: true
+  vars:
+    mount_point: /app  # Change this to your desired mount point
+
+  tasks:
+  - name: Get mount information
+    debug:
+      msg: "{{ ansible_mounts[mount_point] }}"
+  - name: Parse mount options
+    set_fact:
+      fs_options: "{{ ansible_mounts[mount_point].options.split(',') }}"
+  - name: Find device name
+    set_fact:
+      device: "{{ item }}"
+    loop: "{{ fs_options }}"
+    when: item.startswith('dev=')
+  - name: Get SCSI info from sysfs
+    set_fact:
+      scsi_info: "{{ lookup('pipe', '/sbin/sg_inq -i /dev/{{ device }} | grep -oP "0:\\d+ \\d+"') }}"
+    when: device is defined
+  - name: Build disk info output
+    set_fact:
+      disk_info: |-
+        Mount: {{ mount_point }}
+        Size:  {{ ansible_mounts[mount_point].size | human_readable }}
+        Disk:   {{ device }}
+        SCSI_Info: {% if scsi_info is defined %}{{ scsi_info.split()[1] }}{% else %}N/A{% endif %}
+  - name: Print disk info
+    debug:
+      msg: "{{ disk_info }}"
