@@ -12,14 +12,11 @@
 
     - name: Parse and display block device information
       ansible.builtin.debug:
-        msg: >-
+        msg: >
           {{
             lsblk_output.stdout_lines
-            | map('regex_replace', 'NAME="([^"]+)" HCTL="([^"]*)" TYPE="([^"]*)" SIZE="([^"]*)" MODEL="([^"]*)" MOUNTPOINT="([^"]*)" FSTYPE="([^"]*)"', {'name': '\1', 'hctl': '\2', 'type': '\3', 'size': '\4', 'model': '\5', 'mountpoint': '\6', 'fstype': '\7'})
-            | selectattr('fstype', 'in', ['xfs', 'ext4'])
-            | selectattr('mountpoint', 'ne', '')
-            | map('regex_replace', 'hctl="([0-9]+):([0-9]+):([0-9]+):([0-9]+)"', 'SCSI Info: 0:\3')
-            | map('regex_replace', 'mountpoint="([^"]+)"', 'Mount Point: \1')
-            | map('regex_replace', 'name="([^"]+)"', 'Device: /dev/\1')
+            | select('search', 'FSTYPE="(xfs|ext4)"')  # Filter lines with xfs or ext4 filesystems
+            | select('search', 'MOUNTPOINT!=""')  # Ensure the mount point is not empty
+            | map('regex_replace', 'NAME="([^"]+)" HCTL="([^"]*)" TYPE="([^"]*)" SIZE="([^"]*)" MODEL="([^"]*)" MOUNTPOINT="([^"]+)" FSTYPE="([^"]+)"', 'Device: /dev/\\1, Mount Point: \\6, SCSI Info: \\2, FSTYPE: \\7')
             | list
           }}
