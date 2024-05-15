@@ -20,12 +20,12 @@
       loop: "{{ lsblk_output.stdout_lines }}"
       when: 
         - "'FSTYPE=\"xfs\"' in item or 'FSTYPE=\"ext4\"' in item"
-        - item | regex_search('MOUNTPOINT=\"[^"]+\"')
+        - item | regex_search('MOUNTPOINT=\"[^\"]+\"')
 
     - name: Display each disk information
       ansible.builtin.debug:
         msg: >
-          Mount Point: {{ item | regex_search('MOUNTPOINT=\"([^"]+)\"', '\\1') | first }},
-          Device: /dev/{{ item | regex_search('NAME=\"([^"]+)\"', '\\1') | first }},
-          SCSI Info: {{ item | regex_search('HCTL=\"([0-9]+:[0-9]+:[0-9]+:[0-9]+)\"', '\\1') | first | default('N/A') }}
+          Mount Point: {{ item | regex_search('MOUNTPOINT=\"([^\"]+)\"') | first }},
+          Device: /dev/{{ item | regex_search('NAME=\"([^\"]+)\"') | first }},
+          SCSI Info: {{ item | regex_search('HCTL=\"([0-9]+:[0-9]+:[0-9]+:[0-9]+)\"') | first | default('N/A') }}
       loop: "{{ parsed_data }}"
