@@ -41,7 +41,7 @@
             if [[ "$mounted" != "/boot" && "$mounted" != "/boot/efi" ]]; then
               dev=$(df --output=source "$mounted" | tail -n 1)
               vg=$(lvdisplay "$dev" 2>/dev/null | grep "VG Name" | awk '{print $3}')
-              if [[ "$vg" != "vg0" && "$vg" != "vg00" ]]; then
+              if [[ ! "$vg" =~ ^vg0$ && ! "$vg" =~ ^vg00$ ]]; then
                 scsi=$(lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE | grep "MOUNTPOINT=\"$mounted\"")
                 scsi_info=$(echo "$scsi" | awk -F'"' '{print $4}')
                 if [[ "$scsi_info" =~ ^[0-9]+:[0-9]+:[0-9]+:[0-9]+$ ]]; then
@@ -61,11 +61,11 @@
           fi
         done
         if [[ "$valid_disk_found" -eq 0 ]]; then
-          echo "No valid disk present other than vg00"
+          echo "No valid disk present other than vg0 or vg00"
           exit 1
         fi
       register: correlation_output
-      failed_when: "'No valid disk present other than vg00' in correlation_output.stdout_lines"
+      failed_when: "'No valid disk present other than vg0 or vg00' in correlation_output.stdout_lines"
 
     - name: Display correlated information
       ansible.builtin.debug:
