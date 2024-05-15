@@ -5,26 +5,37 @@
   gather_facts: false
 
   vars:
-    mount_point: "/app"
+    mount_point: "/app"  # Update this to the desired mount point
 
   tasks:
     - name: Gather block device information including parent devices
-      ansible.builtin.shell: |
-        lsblk -o NAME,PKNAME,HCTL,SIZE,MOUNTPOINT | grep '{{ mount_point }}' || echo "No match found"
-      register: lvm_to_disk_map
+      ansible.builtin.shell:
+        cmd: lsblk -o NAME,PKNAME,HCTL,SIZE,MOUNTPOINT
+      register: lsblk_output
       changed_when: false
 
-    - name: Check if LVM mapping was successful
-      ansible.builtin.fail:
-        msg: "No LVM or physical disk could be identified for the mount point: {{ mount_point }}"
-      when: '"No match found" in lvm_to_disk_map.stdout'
+    - name: Debug lsblk output
+      ansible.builtin.debug:
+        msg: "{{ lsblk_output.stdout_lines }}"
 
-    - name: Set physical disk details from the mapping
+    - name: Filter for specific mount point
       set_fact:
-        disk_info: "{{ lvm_to_disk_map.stdout_lines | last }}"  # Assuming the relevant line is the last if more than one
-        physical_disk_name: "{{ disk_info | regex_findall('^(\\S+)', ignorecase=True) | first }}"
-        scsi_hctl: "{{ disk_info | regex_findall('([0-9]+:[0-9]+:[0-9]+:[0-9]+)', ignorecase=True) | first }}"
-        disk_size: "{{ disk_info | regex_findall('(\\d+G)', ignorecase=True) | first }}"
+        filtered_output: "{{ lsblk_output.stdout_lines | select('contains', mount_point) | list }}"
+      failed_when: filtered_output | length == 0
+
+    - name: Debug filtered output
+      ansible.builtin.debug:
+        msg: "{{ filtered_output }}"
+
+    - name: Extract physical disk details from the mapping
+      set_fact:
+        disk_info: "{{ filtered_output | last }}"
+      failed_when: disk_info is undefined
+
+    - name: Extract disk name and SCSI HCTL
+      set_fact:
+        physical_disk_name: "{{ disk_info | regex_findall('^\\S+', ignorecase=True) | first }}"
+        scsi_hctl: "{{ disk_info | regex_findall('[0-9]+:[0-9]+:[0-9]+:[0-9]+', ignorecase=True) | first }}"
 
     - name: Display final details
       ansible.builtin.debug:
@@ -32,4 +43,4 @@
           Mount Point: {{ mount_point }},
           Physical Disk: /dev/{{ physical_disk_name | default('unknown') }},
           SCSI HCTL: {{ scsi_hctl | default('N/A') }},
-          Disk Size: {{ disk_size | default('N/A') }}
+          Disk Size: {{ disk_info | regex_findall('\\d+\\.\\d+G', ignorecase=True) | first | default('N/A') }}
