@@ -63,10 +63,8 @@
         done
         if [[ "$valid_disk_found" -eq 0 ]]; then
           echo "No valid disk present other than vg0 or vg00"
-          exit 1
         fi
       register: correlation_output
-      failed_when: "'No valid disk present other than vg0 or vg00' in correlation_output.stdout_lines"
 
     - name: Display correlated information
       ansible.builtin.debug:
