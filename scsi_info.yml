@@ -36,10 +36,11 @@
       ansible.builtin.set_fact:
         disks_info: >-
           {{
-            lsblk_output.stdout_lines | map('regex_search', '^NAME="(?P<name>.*?)" HCTL="(?P<hctl>.*?)" TYPE="(?P<type>.*?)" SIZE="(?P<size>.*?)" MODEL="(?P<model>.*?)" MOUNTPOINT="(?P<mountpoint>.*?)" FSTYPE="(?P<fstype>.*?)"$')
+            lsblk_output.stdout_lines 
+            | map('regex_search', '^NAME="(?P<name>.*?)" HCTL="(?P<hctl>.*?)" TYPE="(?P<type>.*?)" SIZE="(?P<size>.*?)" MODEL="(?P<model>.*?)" MOUNTPOINT="(?P<mountpoint>.*?)" FSTYPE="(?P<fstype>.*?)"$')
             | select('defined')
-            | map('extract', {0: 'name', 1: 'hctl', 2: 'type', 3: 'size', 4: 'model', 5: 'mountpoint', 6: 'fstype'})
-            | list
+            | map('groupby', 1, 2, 3, 4, 5, 6, 7)
+            | map('combine', ['name', 'hctl', 'type', 'size', 'model', 'mountpoint', 'fstype'])
           }}
 
     - name: Display parsed lsblk output
@@ -55,10 +56,9 @@
       ansible.builtin.set_fact:
         lv_info: >-
           {{
-            lvdisplay_output.stdout | regex_findall('VG Name\\s+(\\S+).*?LV Path\\s+(\\S+)', multiline=True)
-            | map('list')
-            | map('zip', ['vg_name', 'lv_path'])
-            | map('items2dict')
+            lvdisplay_output.stdout
+            | regex_findall('VG Name\\s+(\\S+).*?LV Path\\s+(\\S+)', multiline=True)
+            | map('combine', ['vg_name', 'lv_path'])
           }}
 
     - name: Display parsed lvdisplay output
@@ -69,19 +69,20 @@
       ansible.builtin.set_fact:
         filtered_disks: >-
           {{
-            disks_info | selectattr('mountpoint', 'defined')
-                       | rejectattr('fstype', 'eq', '')
-                       | selectattr('fstype', 'in', ['xfs', 'ext4'])
-                       | rejectattr('mountpoint', 'in', ['/boot', '/boot/efi'])
-                       | map('combine', {
-                            'mountpoint': lambda item: item.mountpoint,
-                            'device': lambda item: (lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='lv_path') | first) | default(''),
-                            'vg_name': lambda item: (lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='vg_name') | first) | default(''),
-                            'scsi_info': lambda item: item.hctl | regex_replace('^[0-9]+:([0-9]+):([0-9]+):[0-9]+$', '\\1:\\2') | default('N/A')
-                          })
-                       | selectattr('vg_name', 'defined')
-                       | rejectattr('vg_name', 'in', ['vg0', 'vg00'])
-                       | list
+            disks_info
+            | selectattr('mountpoint', 'defined')
+            | rejectattr('fstype', 'eq', '')
+            | selectattr('fstype', 'in', ['xfs', 'ext4'])
+            | rejectattr('mountpoint', 'in', ['/boot', '/boot/efi'])
+            | map('combine', {
+                'mountpoint': item.mountpoint,
+                'device': lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='lv_path') | first,
+                'vg_name': lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='vg_name') | first,
+                'scsi_info': item.hctl | regex_replace('^[0-9]+:([0-9]+):([0-9]+):[0-9]+$', '\\1:\\2')
+              })
+            | selectattr('vg_name', 'defined')
+            | rejectattr('vg_name', 'in', ['vg0', 'vg00'])
+            | list
           }}
 
     - name: Display filtered disks
