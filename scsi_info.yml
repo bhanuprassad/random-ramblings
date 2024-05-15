@@ -32,19 +32,6 @@
       ansible.builtin.debug:
         var: vgs_output.stdout_lines
 
-    - name: Gather detailed SCSI device information
-      ansible.builtin.shell: |
-        for device in $(ls /dev/disk/by-path/); do
-          echo "Device: $device"
-          udevadm info --query=all --name=/dev/disk/by-path/$device
-          echo ""
-        done
-      register: udevadm_output
-
-    - name: Display detailed SCSI device information
-      ansible.builtin.debug:
-        var: udevadm_output.stdout_lines
-
     - name: Correlate filesystem, VG, and SCSI device information with filtering
       ansible.builtin.shell: |
         echo "Filesystem and SCSI Device Correlation:"
@@ -55,10 +42,11 @@
               vg=$(lvdisplay "$dev" 2>/dev/null | grep "VG Name" | awk '{print $3}')
               if [[ "$vg" != "vg0" && "$vg" != "vg00" ]]; then
                 scsi=$(lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE | grep "MOUNTPOINT=\"$mounted\"")
+                scsi_info=$(echo "$scsi" | awk '{print "HCTL: "$2", Type: "$3", Size: "$4", Model: "$5}')
                 echo "Mount Point: $mounted"
                 echo "Device: $dev"
                 echo "Volume Group: $vg"
-                echo "SCSI Info: $scsi"
+                echo "SCSI Info: $scsi_info"
                 echo ""
               fi
             fi
