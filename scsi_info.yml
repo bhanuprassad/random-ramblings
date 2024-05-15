@@ -54,7 +54,7 @@
       ansible.builtin.set_fact:
         lv_info: >-
           {{
-            lvdisplay_output.stdout | regex_findall('VG Name +(?P<vg_name>\\S+)\\n.*?LV Path +(?P<lv_path>\\S+)', multiline=True)
+            lvdisplay_output.stdout | regex_findall('VG Name\\s+(\\S+).*?LV Path\\s+(\\S+)', multiline=True)
             | map('list')
             | map('zip', ['vg_name', 'lv_path'])
             | map('items2dict')
@@ -73,6 +73,7 @@
                        | selectattr('fstype', 'in', ['xfs', 'ext4'])
                        | rejectattr('mountpoint', 'in', ['/boot', '/boot/efi'])
                        | map('combine', {
+                            'mountpoint': item.mountpoint,
                             'device': lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='lv_path') | first,
                             'vg_name': lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='vg_name') | first,
                             'scsi_info': item.hctl | regex_replace('^[0-9]+:([0-9]+):([0-9]+):[0-9]+$', '\\1:\\2')
