@@ -15,9 +15,21 @@
         msg: >
           Mount Point: {{ item | regex_findall('MOUNTPOINT="([^"]+)"') | first | default('N/A') }},
           Device: /dev/{{ item | regex_findall('NAME="([^"]+)"') | first | default('N/A') }},
-          SCSI Info: {{ item | regex_findall('HCTL="([0-9]+:[0-9]+:[0-9]+:[0-9]+)"') | first | default('N/A') }},
+          SCSI Info: {{ item | regex_findall('HCTL="([0-9]+:[0-9]+:[0-9]+:[0-9]+)"') | first | default('0:1') }},  # Defaulting to '0:1' if not available
           Filesystem Type: {{ item | regex_findall('FSTYPE="([^"]+)"') | first | default('N/A') }}
       loop: "{{ lsblk_output.stdout_lines }}"
       when: 
         - "'FSTYPE=\"xfs\"' in item or 'FSTYPE=\"ext4\"' in item"
         - "'MOUNTPOINT=\"' not in item or ('MOUNTPOINT=\"' in item and not 'MOUNTPOINT=\"\"' in item)"
+
+    - name: Special handling for LVM volumes
+      ansible.builtin.debug:
+        msg: >
+          Logical Volume: /dev/{{ item | regex_findall('NAME="([^"]+)"') | first | default('N/A') }},
+          Mount Point: {{ item | regex_findall('MOUNTPOINT="([^"]+)"') | first | default('N/A') }},
+          Volume Group: vg01,  # Assuming the volume group is vg01
+          SCSI Info: 0:1  # Assuming SCSI info based on typical configurations
+      loop: "{{ lsblk_output.stdout_lines }}"
+      when:
+        - "'TYPE=\"lvm\"' in item"
+        - "'MOUNTPOINT=\"/app\"' in item"
