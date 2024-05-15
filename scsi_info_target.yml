@@ -1,22 +1,40 @@
 ---
-- name: Find Disk with Specific Mount Point
+- name: Retrieve and Display Detailed Disk Information
   hosts: all
   become: yes
-  gather_facts: no  # Set to 'no' initially, we'll manually gather hardware facts
+  gather_facts: no
 
   vars:
-    mount_point: "/app"  # Define the mount point you're interested in
+    mount_point: "/app"
 
   tasks:
-    - name: Gather hardware facts
+    - name: Gather filesystem facts for specific mount
       ansible.builtin.setup:
         gather_subset:
-          - "mounts"  # Gather only mount-related facts
+          - mounts
 
-    - name: Find the disk with the specified mount point
-      ansible.builtin.debug:
-        msg: >
-          The disk mounted on {{ mount_point }} is {{ item.device }}
-          with size {{ item.size_total | default('unknown size') }} bytes
+    - name: Extract and set disk facts
+      set_fact:
+        mount_details: "{{ item }}"
       loop: "{{ ansible_mounts }}"
       when: item.mount == mount_point
+
+    - name: Determine physical disk for the LVM volume
+      ansible.builtin.shell: |
+        vg=$(echo '{{ mount_details.device }}' | cut -d'-' -f1 | awk -F'/' '{print $NF}')
+        lsblk -no pkname $(df --output=source {{ mount_point }} | tail -1)
+      register: physical_disk_result
+      changed_when: false
+
+    - name: Get SCSI information from lsblk
+      ansible.builtin.shell: |
+        lsblk -no hctl /dev/{{ physical_disk_result.stdout }}
+      register: scsi_info_result
+      changed_when: false
+
+    - name: Display combined information
+      ansible.builtin.debug:
+        msg: >
+          Mount: {{ mount_point }},
+          Size: {{ (mount_details.size_total | default(0) / 1024 / 1024 / 1024) | round(2) }} GB,
+          SCSI Info: {{ scsi_info_result.stdout | regex_replace('^([0-9]+):([0-9]+):([0-9]+):([0-9]+)$', '0:\\3') }}
