@@ -36,11 +36,10 @@
       ansible.builtin.set_fact:
         disks_info: >-
           {{
-            lsblk_output.stdout_lines 
+            lsblk_output.stdout_lines
             | map('regex_search', '^NAME="(?P<name>.*?)" HCTL="(?P<hctl>.*?)" TYPE="(?P<type>.*?)" SIZE="(?P<size>.*?)" MODEL="(?P<model>.*?)" MOUNTPOINT="(?P<mountpoint>.*?)" FSTYPE="(?P<fstype>.*?)"$')
             | select('defined')
-            | map('groupby', 1, 2, 3, 4, 5, 6, 7)
-            | map('combine', ['name', 'hctl', 'type', 'size', 'model', 'mountpoint', 'fstype'])
+            | map('dict', 'name', 'hctl', 'type', 'size', 'model', 'mountpoint', 'fstype')
           }}
 
     - name: Display parsed lsblk output
@@ -58,7 +57,7 @@
           {{
             lvdisplay_output.stdout
             | regex_findall('VG Name\\s+(\\S+).*?LV Path\\s+(\\S+)', multiline=True)
-            | map('combine', ['vg_name', 'lv_path'])
+            | map('dict', 'vg_name', 'lv_path')
           }}
 
     - name: Display parsed lvdisplay output
@@ -75,10 +74,10 @@
             | selectattr('fstype', 'in', ['xfs', 'ext4'])
             | rejectattr('mountpoint', 'in', ['/boot', '/boot/efi'])
             | map('combine', {
-                'mountpoint': item.mountpoint,
-                'device': lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='lv_path') | first,
-                'vg_name': lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='vg_name') | first,
-                'scsi_info': item.hctl | regex_replace('^[0-9]+:([0-9]+):([0-9]+):[0-9]+$', '\\1:\\2')
+                'mountpoint': lambda item: item.mountpoint,
+                'device': lambda item: (lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='lv_path') | first) | default(''),
+                'vg_name': lambda item: (lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='vg_name') | first) | default(''),
+                'scsi_info': lambda item: item.hctl | regex_replace('^[0-9]+:([0-9]+):([0-9]+):[0-9]+$', '\\1:\\2') | default('N/A')
               })
             | selectattr('vg_name', 'defined')
             | rejectattr('vg_name', 'in', ['vg0', 'vg00'])
