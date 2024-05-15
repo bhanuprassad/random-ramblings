@@ -10,30 +10,10 @@
         cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE
       register: lsblk_output
 
-    - name: Parse and filter block device information
-      ansible.builtin.set_fact:
-        parsed_disks_info: >-
-          {{
-            lsblk_output.stdout_lines
-            | select('match', '^NAME=.*MOUNTPOINT=.*FSTYPE="(xfs|ext4)"')
-            | map('regex_replace', '^(?:[^"]*"([^"]*)"){6}([^"]*)$', '\\2')  # Extract the MOUNTPOINT
-            | list
-          }}
-
-    - name: Extract detailed information about each disk
-      ansible.builtin.set_fact:
-        detailed_disks_info: >-
-          {{
-            lsblk_output.stdout_lines
-            | select('match', '^NAME=.*MOUNTPOINT=.*FSTYPE="(xfs|ext4)"')
-            | map('regex_replace', '^(?:[^"]*"([^"]*)"){2}([^"]*)$', '\\2')  # Extract the HCTL
-            | map('regex_replace', '^[0-9]:[0-9]:([0-9]+):[0-9]$', '0:\\1')  # Format as "0:TargetID"
-            | list
-          }}
-
-    - name: Display parsed block device information
+    - name: Display each disk information
       ansible.builtin.debug:
-        msg: "{{ item.0 }} is mounted at {{ item.1 }}, SCSI Info: {{ item.2 }}"
-      with_together:
-        - "{{ detailed_disks_info }}"
-        - "{{ parsed_disks_info }}"
+        msg: "Mount Point: {{ item.split(' ')[5].split('=')[1].strip('\"') }}, Device: /dev/mapper/{{ item.split(' ')[0].split('=')[1].strip('\"') }}, Volume Group: vg01, SCSI Info: {{ item.split(' ')[1].split('=')[1].strip('\"').split(':')[2] }}"
+      loop: "{{ lsblk_output.stdout_lines }}"
+      when: 
+        - "'FSTYPE=\"xfs\"' in item or 'FSTYPE=\"ext4\"' in item"
+        - "'MOUNTPOINT' in item and item.split(' ')[5].split('=')[1] != '\"\"'"
