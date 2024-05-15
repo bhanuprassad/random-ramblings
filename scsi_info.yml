@@ -41,12 +41,13 @@
             if [[ "$mounted" != "/boot" && "$mounted" != "/boot/efi" ]]; then
               dev=$(df --output=source "$mounted" | tail -n 1)
               vg=$(lvdisplay "$dev" 2>/dev/null | grep "VG Name" | awk '{print $3}')
-              if [[ ! "$vg" =~ ^vg0$ && ! "$vg" =~ ^vg00$ ]]; then
+              if [[ "$vg" != "vg0" && "$vg" != "vg00" ]]; then
                 scsi=$(lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE | grep "MOUNTPOINT=\"$mounted\"")
-                scsi_info=$(echo "$scsi" | awk -F'"' '{print $4}')
+                scsi_info=$(echo "$scsi" | awk -F'HCTL="' '{print $2}' | awk -F'"' '{print $1}')
                 if [[ "$scsi_info" =~ ^[0-9]+:[0-9]+:[0-9]+:[0-9]+$ ]]; then
-                  channel_target=$(echo "$scsi_info" | awk -F: '{print $2 ":" $3}')
-                  scsi_info="$channel_target"
+                  channel=$(echo "$scsi_info" | awk -F: '{print $2}')
+                  target=$(echo "$scsi_info" | awk -F: '{print $3}')
+                  scsi_info="$channel:$target"
                 else
                   scsi_info="N/A"
                 fi
