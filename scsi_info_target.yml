@@ -1,30 +1,40 @@
 ---
-- name: Identify Disk and SCSI Information for a Specific Mount Point
+- name: Retrieve Disk and SCSI Information for a Specific Mount
   hosts: all
   become: yes
   gather_facts: no
 
   vars:
-    var_mount: "/app"  # The mount point, can be set dynamically at runtime if needed
+    var_mount: "/app"  # User-defined mount point
 
   tasks:
-    - name: Gather detailed block device information
-      ansible.builtin.command:
-        cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MOUNTPOINT
-      register: lsblk_output
+    - name: Gather disk facts
+      ansible.builtin.setup:
+        gather_subset:
+          - "hardware"
 
-    - name: Extract disk information for the specified mount point
+    - name: Extract disk details from gathered facts
       ansible.builtin.set_fact:
-        disk_details: "{{ item }}"
-      loop: "{{ lsblk_output.stdout_lines }}"
-      when: "'MOUNTPOINT=\"' + var_mount + '\"' in item and 'TYPE=\"part\"' in item"
+        disk_device: "{{ item.key }}"
+      loop: "{{ ansible_mounts }}"
+      when: item.mount == var_mount
       no_log: true
 
-    - name: Display disk information
+    - name: Gather detailed block device information with lsblk
+      ansible.builtin.command:
+        cmd: lsblk -P -o NAME,HCTL
+      register: lsblk_output
+
+    - name: Extract SCSI information for the specified device
+      ansible.builtin.set_fact:
+        scsi_info: "{{ item | regex_findall('HCTL="([0-9]+:[0-9]+:[0-9]+:[0-9]+)"') | first }}"
+      loop: "{{ lsblk_output.stdout_lines }}"
+      when: "'NAME=\"' + disk_device | basename + '\"' in item"
+      no_log: true
+
+    - name: Display SCSI information
       ansible.builtin.debug:
         msg: >
           Mount: {{ var_mount }},
-          Disk: {{ disk_details | regex_findall('NAME="([^"]+)"') | first }},
-          Size: {{ disk_details | regex_findall('SIZE="([^"]+)"') | first }},
-          SCSI Info: {{ (disk_details | regex_findall('HCTL="([0-9]+):([0-9]+):([0-9]+):([0-9]+)"') | first | default('N/A')) | regex_replace('^([0-9]+):([0-9]+):([0-9]+):([0-9]+)$', '0:\\3') }}
-      when: disk_details is defined
+          Disk: {{ disk_device }},
+          SCSI Info: {{ scsi_info | default('N/A') | regex_replace('^([0-9]+):([0-9]+):([0-9]+):([0-9]+)$', '0:\\2') }}
