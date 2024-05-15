@@ -1,26 +1,38 @@
 ---
-- name: Identify filesystems and their corresponding SCSI devices based on user-defined mount point
+- name: Dynamically identify SCSI devices excluding vg0 and vg00
   hosts: all
   become: yes
   gather_facts: yes
-  vars_prompt:
-    - name: user_mount
-      prompt: "Enter the mount point you want to check (e.g., /app)"
-      private: no
 
   tasks:
     - name: Gather detailed block device information
       ansible.builtin.command:
-        cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE
+        cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE,VG
       register: lsblk_output
 
-    - name: Display disk information for specified mount point
+    - name: Filter and display relevant volumes excluding vg0 and vg00
       ansible.builtin.debug:
         msg: >
-          Logical Volume: /dev/{{ item | regex_findall('NAME="([^"]+)"') | first | default('N/A') }},
-          Mount Point: {{ user_mount }},
-          SCSI Info: {{ item | regex_findall('HCTL="([0-9]+:[0-9]+:[0-9]+:[0-9]+)"') | first | default('N/A') }},
-          Filesystem Type: {{ item | regex_findall('FSTYPE="([^"]+)"') | first | default('N/A') }}
+          Logical Volume: /dev/{{ item | regex_findall('NAME="([^"]+)"') | first }},
+          Mount Point: {{ item | regex_findall('MOUNTPOINT="([^"]+)"') | first }},
+          Volume Group: {{ item | regex_findall('VG="([^"]+)"') | first }},
+          SCSI Info: N/A  # Placeholder, will populate in next task
       loop: "{{ lsblk_output.stdout_lines }}"
       when: 
-        - item | regex_search('MOUNTPOINT="' + user_mount + '"')
+        - item | regex_search('VG="vg0[1-9]"')
+        - "'TYPE=\"lvm\"' in item"
+        - "'MOUNTPOINT!=\"\"' in item"
+      register: filtered_volumes
+
+    - name: Find physical volume and SCSI information for each logical volume
+      ansible.builtin.debug:
+        msg: >
+          Mount Point: {{ item.item | regex_findall('MOUNTPOINT="([^"]+)"') | first }},
+          Logical Volume: /dev/{{ item.item | regex_findall('NAME="([^"]+)"') | first }},
+          Volume Group: {{ item.item | regex_findall('VG="([^"]+)"') | first }},
+          SCSI Info: {{ item.item | regex_findall('HCTL="([^"]+)"') | first | default('N/A') }},
+          Physical Disk: /dev/{{ item.item | regex_findall('NAME="([^"]+)"') | first }},
+          Filesystem Type: {{ item.item | regex_findall('FSTYPE="([^"]+)"') | first | default('N/A') }}
+      loop: "{{ filtered_volumes.results }}"
+      when: 
+        - item.item | regex_search('TYPE="disk"')
