@@ -10,10 +10,16 @@
         cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE
       register: lsblk_output
 
-    - name: Display each disk information
+    - name: Parse and display block device information
       ansible.builtin.debug:
-        msg: "Mount Point: {{ item.split(' ')[5].split('=')[1].strip('\"') }}, Device: /dev/mapper/{{ item.split(' ')[0].split('=')[1].strip('\"') }}, Volume Group: vg01, SCSI Info: {{ item.split(' ')[1].split('=')[1].strip('\"').split(':')[2] }}"
-      loop: "{{ lsblk_output.stdout_lines }}"
-      when: 
-        - "'FSTYPE=\"xfs\"' in item or 'FSTYPE=\"ext4\"' in item"
-        - "'MOUNTPOINT' in item and item.split(' ')[5].split('=')[1] != '\"\"'"
+        msg: >-
+          {{
+            lsblk_output.stdout_lines
+            | map('regex_replace', 'NAME="([^"]+)" HCTL="([^"]*)" TYPE="([^"]*)" SIZE="([^"]*)" MODEL="([^"]*)" MOUNTPOINT="([^"]*)" FSTYPE="([^"]*)"', {'name': '\1', 'hctl': '\2', 'type': '\3', 'size': '\4', 'model': '\5', 'mountpoint': '\6', 'fstype': '\7'})
+            | selectattr('fstype', 'in', ['xfs', 'ext4'])
+            | selectattr('mountpoint', 'ne', '')
+            | map('regex_replace', 'hctl="([0-9]+):([0-9]+):([0-9]+):([0-9]+)"', 'SCSI Info: 0:\3')
+            | map('regex_replace', 'mountpoint="([^"]+)"', 'Mount Point: \1')
+            | map('regex_replace', 'name="([^"]+)"', 'Device: /dev/\1')
+            | list
+          }}
