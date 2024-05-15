@@ -10,22 +10,30 @@
         cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE
       register: lsblk_output
 
-    - name: Parse and display lsblk output
-      ansible.builtin.debug:
-        msg: >
+    - name: Parse and filter block device information
+      ansible.builtin.set_fact:
+        parsed_disks_info: >-
           {{
             lsblk_output.stdout_lines
-            | map('regex_replace', 'NAME="(?P<name>.+?)" HCTL="(?P<hctl>.+?)" TYPE="(?P<type>.+?)" SIZE="(?P<size>.+?)" MODEL="(?P<model>.+?)" MOUNTPOINT="(?P<mountpoint>.+?)" FSTYPE="(?P<fstype>.+?)"', '\\g<name>,\\g<hctl>,\\g<type>,\\g<size>,\\g<model>,\\g<mountpoint>,\\g<fstype>')
+            | select('match', '^NAME=.*MOUNTPOINT=.*FSTYPE="(xfs|ext4)"')
+            | map('regex_replace', '^(?:[^"]*"([^"]*)"){6}([^"]*)$', '\\2')  # Extract the MOUNTPOINT
             | list
           }}
 
-    - name: Filter and display relevant disk information
-      ansible.builtin.debug:
-        msg: >
+    - name: Extract detailed information about each disk
+      ansible.builtin.set_fact:
+        detailed_disks_info: >-
           {{
             lsblk_output.stdout_lines
-            | map('regex_replace', 'NAME="(?P<name>.+?)" HCTL="(?P<hctl>.+?)" TYPE="(?P<type>.+?)" SIZE="(?P<size>.+?)" MODEL="(?P<model>.+?)" MOUNTPOINT="(?P<mountpoint>.+?)" FSTYPE="(?P<fstype>.+?)"', '\\g<name>,\\g<hctl>,\\g<type>,\\g<size>,\\g<model>,\\g<mountpoint>,\\g<fstype>')
-            | select('match', '.*,.*,.*,.*,.*,.*ext4|xfs,.*')
-            | map('regex_replace', '.*,0:0:(?P<id>\d+):0,.*,.*,/(?P<mount>.*),ext4|xfs', 'Mount Point: /\\g<mount>\nDevice: /dev/mapper/vg01-\\g<mount>\nVolume Group: vg01\nSCSI Info: 0:\\g<id>')
+            | select('match', '^NAME=.*MOUNTPOINT=.*FSTYPE="(xfs|ext4)"')
+            | map('regex_replace', '^(?:[^"]*"([^"]*)"){2}([^"]*)$', '\\2')  # Extract the HCTL
+            | map('regex_replace', '^[0-9]:[0-9]:([0-9]+):[0-9]$', '0:\\1')  # Format as "0:TargetID"
             | list
           }}
+
+    - name: Display parsed block device information
+      ansible.builtin.debug:
+        msg: "{{ item.0 }} is mounted at {{ item.1 }}, SCSI Info: {{ item.2 }}"
+      with_together:
+        - "{{ detailed_disks_info }}"
+        - "{{ parsed_disks_info }}"
