@@ -10,22 +10,22 @@
         cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE
       register: lsblk_output
 
-    - name: Initialize an empty list for storing parsed data
-      ansible.builtin.set_fact:
-        parsed_data: []
-
-    - name: Parse block device information
-      ansible.builtin.set_fact:
-        parsed_data: "{{ parsed_data + [item] }}"
+    - name: Filter and display relevant disk information
+      ansible.builtin.debug:
+        msg: "{{ item }}"
       loop: "{{ lsblk_output.stdout_lines }}"
       when: 
         - "'FSTYPE=\"xfs\"' in item or 'FSTYPE=\"ext4\"' in item"
-        - item | regex_search('MOUNTPOINT=\"[^\"]+\"')
+        - "'MOUNTPOINT=\"' not in item or regex_search('MOUNTPOINT=\"[^\"].+\"', item)"
 
-    - name: Display each disk information
+    - name: Display formatted disk information
       ansible.builtin.debug:
         msg: >
-          Mount Point: {{ item | regex_search('MOUNTPOINT=\"([^\"]+)\"') | first }},
-          Device: /dev/{{ item | regex_search('NAME=\"([^\"]+)\"') | first }},
-          SCSI Info: {{ item | regex_search('HCTL=\"([0-9]+:[0-9]+:[0-9]+:[0-9]+)\"') | first | default('N/A') }}
-      loop: "{{ parsed_data }}"
+          Mount Point: {{ item | regex_findall('MOUNTPOINT="([^"]+)"') | first }},
+          Device: /dev/{{ item | regex_findall('NAME="([^"]+)"') | first }},
+          SCSI Info: {{ item | regex_findall('HCTL="([0-9]+:[0-9]+:[0-9]+:[0-9]+)"') | first | default('N/A') }},
+          Filesystem Type: {{ item | regex_findall('FSTYPE="([^"]+)"') | first }}
+      loop: "{{ lsblk_output.stdout_lines }}"
+      when: 
+        - "'FSTYPE=\"xfs\"' in item or 'FSTYPE=\"ext4\"' in item"
+        - "'MOUNTPOINT=\"' not in item or regex_search('MOUNTPOINT=\"[^\"].+\"', item)"
