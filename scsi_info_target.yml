@@ -1,40 +1,22 @@
 ---
-- name: Retrieve Disk and SCSI Information for a Specific Mount
+- name: Find Disk with Specific Mount Point
   hosts: all
   become: yes
-  gather_facts: no
+  gather_facts: no  # Set to 'no' initially, we'll manually gather hardware facts
 
   vars:
-    var_mount: "/app"  # User-defined mount point
+    mount_point: "/app"  # Define the mount point you're interested in
 
   tasks:
-    - name: Gather disk facts
+    - name: Gather hardware facts
       ansible.builtin.setup:
         gather_subset:
-          - "hardware"
+          - "mounts"  # Gather only mount-related facts
 
-    - name: Extract disk details from gathered facts
-      ansible.builtin.set_fact:
-        disk_device: "{{ item.key }}"
-      loop: "{{ ansible_mounts }}"
-      when: item.mount == var_mount
-      no_log: true
-
-    - name: Gather detailed block device information with lsblk
-      ansible.builtin.command:
-        cmd: lsblk -P -o NAME,HCTL
-      register: lsblk_output
-
-    - name: Extract SCSI information for the specified device
-      ansible.builtin.set_fact:
-        scsi_info: "{{ item | regex_findall('HCTL="([0-9]+:[0-9]+:[0-9]+:[0-9]+)"') | first }}"
-      loop: "{{ lsblk_output.stdout_lines }}"
-      when: "'NAME=\"' + disk_device | basename + '\"' in item"
-      no_log: true
-
-    - name: Display SCSI information
+    - name: Find the disk with the specified mount point
       ansible.builtin.debug:
         msg: >
-          Mount: {{ var_mount }},
-          Disk: {{ disk_device }},
-          SCSI Info: {{ scsi_info | default('N/A') | regex_replace('^([0-9]+):([0-9]+):([0-9]+):([0-9]+)$', '0:\\2') }}
+          The disk mounted on {{ mount_point }} is {{ item.device }}
+          with size {{ item.size_total | default('unknown size') }} bytes
+      loop: "{{ ansible_mounts }}"
+      when: item.mount == mount_point
