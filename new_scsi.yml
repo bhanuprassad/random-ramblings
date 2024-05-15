@@ -1,32 +1,33 @@
 ---
-- hosts: all
+- name: Display Disk Details for a Mount Point
+  hosts: all
   become: true
+  gather_facts: false
+
   vars:
-    mount_point: /app  # Change this to your desired mount point
+    mount_point: "/app"
 
   tasks:
-  - name: Get mount information
-    debug:
-      msg: "{{ ansible_mounts[mount_point] }}"
-  - name: Parse mount options
-    set_fact:
-      fs_options: "{{ ansible_mounts[mount_point].options.split(',') }}"
-  - name: Find device name
-    set_fact:
-      device: "{{ item }}"
-    loop: "{{ fs_options }}"
-    when: item.startswith('dev=')
-  - name: Get SCSI info from sysfs
-    set_fact:
-      scsi_info: "{{ lookup('pipe', '/sbin/sg_inq -i /dev/{{ device }} | grep -oP "0:\\d+ \\d+"') }}"
-    when: device is defined
-  - name: Build disk info output
-    set_fact:
-      disk_info: |-
-        Mount: {{ mount_point }}
-        Size:  {{ ansible_mounts[mount_point].size | human_readable }}
-        Disk:   {{ device }}
-        SCSI_Info: {% if scsi_info is defined %}{{ scsi_info.split()[1] }}{% else %}N/A{% endif %}
-  - name: Print disk info
-    debug:
-      msg: "{{ disk_info }}"
+    - name: Gather block device information
+      ansible.builtin.command:
+        cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MOUNTPOINT
+      register: lsblk_output
+
+    - name: Determine block device from mount point
+      set_fact:
+        block_device_details: "{{ lsblk_output.stdout_lines | select('search', 'MOUNTPOINT=\"' + mount_point + '\"') | list }}"
+      no_log: false
+
+    - name: Extract and display details
+      ansible.builtin.debug:
+        msg: >
+          Mount Point: {{ mount_point }},
+          LVM Name: /dev/{{ block_device_details | map('regex_findall', 'NAME="([^"]+)"') | first | first }},
+          SCSI HCTL: {{ block_device_details | map('regex_findall', 'HCTL="([^"]+)"') | first | first | default('N/A') }},
+          Size: {{ block_device_details | map('regex_findall', 'SIZE="([^"]+)"') | first | first | default('N/A') }} GB
+      when: block_device_details | length > 0
+
+    - name: Fail if no device found
+      ansible.builtin.fail:
+        msg: "No device found mounted at {{ mount_point }}"
+      when: block_device_details | length == 0
