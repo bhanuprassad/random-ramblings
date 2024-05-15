@@ -1,0 +1,67 @@
+---
+- name: Identify filesystems and their corresponding SCSI devices in RedHat Guest OS
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Gather filesystem mount information
+      ansible.builtin.command:
+        cmd: df -hT
+      register: df_output
+
+    - name: Display filesystem mount information
+      ansible.builtin.debug:
+        var: df_output.stdout_lines
+
+    - name: Gather detailed block device information
+      ansible.builtin.command:
+        cmd: lsblk -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT
+      register: lsblk_output
+
+    - name: Display detailed block device information
+      ansible.builtin.debug:
+        var: lsblk_output.stdout_lines
+
+    - name: Gather volume group information
+      ansible.builtin.command:
+        cmd: vgs --noheadings -o vg_name,pv_name
+      register: vgs_output
+
+    - name: Display volume group information
+      ansible.builtin.debug:
+        var: vgs_output.stdout_lines
+
+    - name: Gather detailed SCSI device information
+      ansible.builtin.shell: |
+        for device in $(ls /dev/disk/by-path/); do
+          echo "Device: $device"
+          udevadm info --query=all --name=/dev/disk/by-path/$device
+          echo ""
+        done
+      register: udevadm_output
+
+    - name: Display detailed SCSI device information
+      ansible.builtin.debug:
+        var: udevadm_output.stdout_lines
+
+    - name: Correlate filesystem, VG, and SCSI device information with filtering
+      ansible.builtin.shell: |
+        echo "Filesystem and SCSI Device Correlation:"
+        for mp in $(df --output=target | tail -n +2); do
+          dev=$(df --output=source $mp | tail -n 1)
+          vg=$(lvdisplay $dev 2>/dev/null | grep "VG Name" | awk '{print $3}')
+          if [[ "$vg" != "vg0" && "$vg" != "vg00" ]]; then
+            scsi=$(lsblk -no NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT | grep $mp)
+            echo "Mount Point: $mp"
+            echo "Device: $dev"
+            echo "Volume Group: $vg"
+            echo "SCSI Info: $scsi"
+            echo ""
+          fi
+        done
+      register: correlation_output
+
+    - name: Display correlated information
+      ansible.builtin.debug:
+        var: correlation_output.stdout_lines
