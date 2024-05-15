@@ -5,7 +5,7 @@
   gather_facts: no
 
   vars:
-    mount_point: "/app"
+    mount_point: "/app"  # Specify the mount point
 
   tasks:
     - name: Gather filesystem facts for specific mount
@@ -18,23 +18,32 @@
         mount_details: "{{ item }}"
       loop: "{{ ansible_mounts }}"
       when: item.mount == mount_point
+      no_log: false  # Enable logging to debug issues
 
-    - name: Determine physical disk for the LVM volume
+    - name: Determine the block device for the LVM volume
       ansible.builtin.shell: |
-        vg=$(echo '{{ mount_details.device }}' | cut -d'-' -f1 | awk -F'/' '{print $NF}')
-        lsblk -no pkname $(df --output=source {{ mount_point }} | tail -1)
+        lsblk -no PKNAME $(df --output=source {{ mount_point }} | tail -n1)
       register: physical_disk_result
       changed_when: false
+      no_log: false  # Enable logging to debug issues
+
+    - name: Check physical disk result
+      ansible.builtin.fail:
+        msg: "Failed to determine the physical disk."
+      when: physical_disk_result.stdout == ""
 
     - name: Get SCSI information from lsblk
       ansible.builtin.shell: |
-        lsblk -no hctl /dev/{{ physical_disk_result.stdout }}
+        lsblk -no HCTL /dev/{{ physical_disk_result.stdout | trim }}
       register: scsi_info_result
       changed_when: false
+      no_log: false  # Enable logging to debug issues
 
     - name: Display combined information
       ansible.builtin.debug:
         msg: >
           Mount: {{ mount_point }},
-          Size: {{ (mount_details.size_total | default(0) / 1024 / 1024 / 1024) | round(2) }} GB,
-          SCSI Info: {{ scsi_info_result.stdout | regex_replace('^([0-9]+):([0-9]+):([0-9]+):([0-9]+)$', '0:\\3') }}
+          Disk: /dev/{{ physical_disk_result.stdout | trim }},
+          SCSI Info: {{ scsi_info_result.stdout | default('N/A') | regex_replace('^([0-9]+):([0-9]+):([0-9]+):([0-9]+)$', '0:\\3') }},
+          Filesystem Type: {{ mount_details.fstype | default('N/A') }},
+          Size: {{ (mount_details.size_total | default(0) / 1024 / 1024 / 1024) | round(2) }} GB
