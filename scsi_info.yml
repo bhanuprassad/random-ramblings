@@ -5,85 +5,27 @@
   gather_facts: yes
 
   tasks:
-    - name: Gather filesystem mount information
-      ansible.builtin.command:
-        cmd: df -hT
-      register: df_output
-
-    - name: Display filesystem mount information
-      ansible.builtin.debug:
-        var: df_output.stdout_lines
-
     - name: Gather detailed block device information
       ansible.builtin.command:
         cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE
       register: lsblk_output
 
-    - name: Display detailed block device information
+    - name: Parse and display lsblk output
       ansible.builtin.debug:
-        var: lsblk_output.stdout_lines
-
-    - name: Gather volume group information
-      ansible.builtin.command:
-        cmd: vgs --noheadings -o vg_name,pv_name
-      register: vgs_output
-
-    - name: Display volume group information
-      ansible.builtin.debug:
-        var: vgs_output.stdout_lines
-
-    - name: Parse lsblk output
-      ansible.builtin.set_fact:
-        disks_info: >-
+        msg: >
           {{
             lsblk_output.stdout_lines
-            | map('regex_search', '^NAME="(?P<name>.*?)" HCTL="(?P<hctl>.*?)" TYPE="(?P<type>.*?)" SIZE="(?P<size>.*?)" MODEL="(?P<model>.*?)" MOUNTPOINT="(?P<mountpoint>.*?)" FSTYPE="(?P<fstype>.*?)"$')
-            | select('defined')
-            | map('dict', 'name', 'hctl', 'type', 'size', 'model', 'mountpoint', 'fstype')
-          }}
-
-    - name: Display parsed lsblk output
-      ansible.builtin.debug:
-        var: disks_info
-
-    - name: Gather detailed information about mounts
-      ansible.builtin.command:
-        cmd: lvdisplay
-      register: lvdisplay_output
-
-    - name: Parse lvdisplay output
-      ansible.builtin.set_fact:
-        lv_info: >-
-          {{
-            lvdisplay_output.stdout
-            | regex_findall('VG Name\\s+(\\S+).*?LV Path\\s+(\\S+)', multiline=True)
-            | map('dict', 'vg_name', 'lv_path')
-          }}
-
-    - name: Display parsed lvdisplay output
-      ansible.builtin.debug:
-        var: lv_info
-
-    - name: Filter disks and match with mount points
-      ansible.builtin.set_fact:
-        filtered_disks: >-
-          {{
-            disks_info
-            | selectattr('mountpoint', 'defined')
-            | rejectattr('fstype', 'eq', '')
-            | selectattr('fstype', 'in', ['xfs', 'ext4'])
-            | rejectattr('mountpoint', 'in', ['/boot', '/boot/efi'])
-            | map('combine', {
-                'mountpoint': lambda item: item.mountpoint,
-                'device': lambda item: (lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='lv_path') | first) | default(''),
-                'vg_name': lambda item: (lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='vg_name') | first) | default(''),
-                'scsi_info': lambda item: item.hctl | regex_replace('^[0-9]+:([0-9]+):([0-9]+):[0-9]+$', '\\1:\\2') | default('N/A')
-              })
-            | selectattr('vg_name', 'defined')
-            | rejectattr('vg_name', 'in', ['vg0', 'vg00'])
+            | map('regex_replace', 'NAME="(?P<name>.+?)" HCTL="(?P<hctl>.+?)" TYPE="(?P<type>.+?)" SIZE="(?P<size>.+?)" MODEL="(?P<model>.+?)" MOUNTPOINT="(?P<mountpoint>.+?)" FSTYPE="(?P<fstype>.+?)"', '\\g<name>,\\g<hctl>,\\g<type>,\\g<size>,\\g<model>,\\g<mountpoint>,\\g<fstype>')
             | list
           }}
 
-    - name: Display filtered disks
+    - name: Filter and display relevant disk information
       ansible.builtin.debug:
-        var: filtered_disks
+        msg: >
+          {{
+            lsblk_output.stdout_lines
+            | map('regex_replace', 'NAME="(?P<name>.+?)" HCTL="(?P<hctl>.+?)" TYPE="(?P<type>.+?)" SIZE="(?P<size>.+?)" MODEL="(?P<model>.+?)" MOUNTPOINT="(?P<mountpoint>.+?)" FSTYPE="(?P<fstype>.+?)"', '\\g<name>,\\g<hctl>,\\g<type>,\\g<size>,\\g<model>,\\g<mountpoint>,\\g<fstype>')
+            | select('match', '.*,.*,.*,.*,.*,.*ext4|xfs,.*')
+            | map('regex_replace', '.*,0:0:(?P<id>\d+):0,.*,.*,/(?P<mount>.*),ext4|xfs', 'Mount Point: /\\g<mount>\nDevice: /dev/mapper/vg01-\\g<mount>\nVolume Group: vg01\nSCSI Info: 0:\\g<id>')
+            | list
+          }}
