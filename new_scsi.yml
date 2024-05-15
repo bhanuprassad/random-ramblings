@@ -1,5 +1,5 @@
 ---
-- name: Display Disk Details for a Mount Point
+- name: Trace LVM to Physical Disk and Retrieve SCSI Information
   hosts: all
   become: true
   gather_facts: false
@@ -8,26 +8,28 @@
     mount_point: "/app"
 
   tasks:
-    - name: Gather block device information
-      ansible.builtin.command:
-        cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MOUNTPOINT
-      register: lsblk_output
+    - name: Gather block device information including parent devices
+      ansible.builtin.shell: |
+        lsblk -o NAME,PKNAME,HCTL,SIZE,MOUNTPOINT | grep '{{ mount_point }}' || echo "No match found"
+      register: lvm_to_disk_map
+      changed_when: false
 
-    - name: Determine block device from mount point
+    - name: Check if LVM mapping was successful
+      ansible.builtin.fail:
+        msg: "No LVM or physical disk could be identified for the mount point: {{ mount_point }}"
+      when: '"No match found" in lvm_to_disk_map.stdout'
+
+    - name: Set physical disk details from the mapping
       set_fact:
-        block_device_details: "{{ lsblk_output.stdout_lines | select('search', 'MOUNTPOINT=\"' + mount_point + '\"') | list }}"
-      no_log: false
+        disk_info: "{{ lvm_to_disk_map.stdout_lines | last }}"  # Assuming the relevant line is the last if more than one
+        physical_disk_name: "{{ disk_info | regex_findall('^(\\S+)', ignorecase=True) | first }}"
+        scsi_hctl: "{{ disk_info | regex_findall('([0-9]+:[0-9]+:[0-9]+:[0-9]+)', ignorecase=True) | first }}"
+        disk_size: "{{ disk_info | regex_findall('(\\d+G)', ignorecase=True) | first }}"
 
-    - name: Extract and display details
+    - name: Display final details
       ansible.builtin.debug:
         msg: >
           Mount Point: {{ mount_point }},
-          LVM Name: /dev/{{ block_device_details | map('regex_findall', 'NAME="([^"]+)"') | first | first }},
-          SCSI HCTL: {{ block_device_details | map('regex_findall', 'HCTL="([^"]+)"') | first | first | default('N/A') }},
-          Size: {{ block_device_details | map('regex_findall', 'SIZE="([^"]+)"') | first | first | default('N/A') }} GB
-      when: block_device_details | length > 0
-
-    - name: Fail if no device found
-      ansible.builtin.fail:
-        msg: "No device found mounted at {{ mount_point }}"
-      when: block_device_details | length == 0
+          Physical Disk: /dev/{{ physical_disk_name | default('unknown') }},
+          SCSI HCTL: {{ scsi_hctl | default('N/A') }},
+          Disk Size: {{ disk_size | default('N/A') }}
