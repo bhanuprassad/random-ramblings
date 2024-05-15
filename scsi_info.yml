@@ -10,13 +10,18 @@
         cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE
       register: lsblk_output
 
-    - name: Parse and display block device information
+    - name: Initialize an empty list for storing parsed data
+      ansible.builtin.set_fact:
+        parsed_data: []
+
+    - name: Parse block device information
+      ansible.builtin.set_fact:
+        parsed_data: "{{ parsed_data + [item | regex_search('^NAME=\"(?P<name>[^\"]+)\" HCTL=\"(?P<hctl>[^\"]*)\" TYPE=\"(?P<type>[^\"]+)\" SIZE=\"(?P<size>[^\"]+)\" MODEL=\"(?P<model>[^\"]*)\" MOUNTPOINT=\"(?P<mountpoint>[^\"]+)\" FSTYPE=\"(?P<fstype>[^\"]+)\"')] }}"
+      loop: "{{ lsblk_output.stdout_lines }}"
+      when: item is search('FSTYPE="(xfs|ext4)"') and item is search('MOUNTPOINT!="\"\""')
+
+    - name: Filter and display relevant disk information
       ansible.builtin.debug:
-        msg: >
-          {{
-            lsblk_output.stdout_lines
-            | select('search', 'FSTYPE="(xfs|ext4)"')  # Filter lines with xfs or ext4 filesystems
-            | select('search', 'MOUNTPOINT!=""')  # Ensure the mount point is not empty
-            | map('regex_replace', 'NAME="([^"]+)" HCTL="([^"]*)" TYPE="([^"]*)" SIZE="([^"]*)" MODEL="([^"]*)" MOUNTPOINT="([^"]+)" FSTYPE="([^"]+)"', 'Device: /dev/\\1, Mount Point: \\6, SCSI Info: \\2, FSTYPE: \\7')
-            | list
-          }}
+        msg: "Mount Point: {{ item.0['mountpoint'] }}, Device: /dev/mapper/{{ item.0['name'] }}, Volume Group: vg01, SCSI Info: {{ item.0['hctl'] | regex_replace('^([0-9]+:[0-9]+):([0-9]+):([0-9]+)$', '0:\\2') }}"
+      loop: "{{ parsed_data }}"
+      when: item.0 is defined
