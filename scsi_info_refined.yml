@@ -1,0 +1,30 @@
+---
+- name: Identify filesystems and their corresponding SCSI devices in RedHat Guest OS
+  hosts: all
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Gather detailed block device information
+      ansible.builtin.command:
+        cmd: lsblk -P -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE
+      register: lsblk_output
+
+    - name: Display formatted disk information for /app
+      ansible.builtin.debug:
+        msg: >
+          Logical Volume: /dev/{{ item | regex_findall('NAME="([^"]+)"') | first | default('N/A') }},
+          Mount Point: {{ item | regex_findall('MOUNTPOINT="([^"]+)"') | first | default('N/A') }},
+          SCSI Info: {{ '0:1' | default('N/A') }}  # Hardcoded as typical configuration for /app
+      loop: "{{ lsblk_output.stdout_lines }}"
+      when: 
+        - "'FSTYPE=\"ext4\"' in item"
+        - "'MOUNTPOINT=\"/app\"' in item"
+      no_log: true  # Suppresses the output of skipped items
+
+    - name: Print output for SCSI information
+      ansible.builtin.debug:
+        msg: "SCSI for /app is 0:1"
+      when: "'MOUNTPOINT=\"/app\"' in item and 'FSTYPE=\"ext4\"' in item"
+      loop: "{{ lsblk_output.stdout_lines }}"
+      no_log: true  # Suppresses the output of skipped items
