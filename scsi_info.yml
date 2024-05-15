@@ -16,7 +16,7 @@
 
     - name: Gather detailed block device information
       ansible.builtin.command:
-        cmd: lsblk -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT
+        cmd: lsblk -o NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE
       register: lsblk_output
 
     - name: Display detailed block device information
@@ -48,16 +48,18 @@
     - name: Correlate filesystem, VG, and SCSI device information with filtering
       ansible.builtin.shell: |
         echo "Filesystem and SCSI Device Correlation:"
-        for mp in $(df --output=target | tail -n +2); do
-          dev=$(df --output=source $mp | tail -n 1)
-          vg=$(lvdisplay $dev 2>/dev/null | grep "VG Name" | awk '{print $3}')
-          if [[ "$vg" != "vg0" && "$vg" != "vg00" ]]; then
-            scsi=$(lsblk -no NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT | grep $mp)
-            echo "Mount Point: $mp"
-            echo "Device: $dev"
-            echo "Volume Group: $vg"
-            echo "SCSI Info: $scsi"
-            echo ""
+        df -hT | tail -n +2 | while read fs type size used avail usep mounted; do
+          if [[ "$type" == "xfs" || "$type" == "ext4" ]]; then
+            dev=$(df --output=source $mounted | tail -n 1)
+            vg=$(lvdisplay $dev 2>/dev/null | grep "VG Name" | awk '{print $3}')
+            if [[ "$vg" != "vg0" && "$vg" != "vg00" ]]; then
+              scsi=$(lsblk -no NAME,HCTL,TYPE,SIZE,MODEL,MOUNTPOINT,FSTYPE | grep $mounted)
+              echo "Mount Point: $mounted"
+              echo "Device: $dev"
+              echo "Volume Group: $vg"
+              echo "SCSI Info: $scsi"
+              echo ""
+            fi
           fi
         done
       register: correlation_output
