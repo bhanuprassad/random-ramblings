@@ -19,5 +19,5 @@
           Filesystem Type: {{ item | regex_findall('FSTYPE="([^"]+)"') | first | default('N/A') }}
       loop: "{{ lsblk_output.stdout_lines }}"
       when: 
-        - item | search('FSTYPE="xfs"') or item | search('FSTYPE="ext4"')
-        - item | search('MOUNTPOINT="[^"]+"')  # Ensure the mount point is not empty
+        - "'FSTYPE=\"xfs\"' in item or 'FSTYPE=\"ext4\"' in item"
+        - "'MOUNTPOINT=\"' not in item or ('MOUNTPOINT=\"' in item and not 'MOUNTPOINT=\"\"' in item)"
