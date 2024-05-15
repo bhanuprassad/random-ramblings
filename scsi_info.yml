@@ -36,12 +36,9 @@
       ansible.builtin.set_fact:
         disks_info: >-
           {{
-            lsblk_output.stdout_lines | map('regex_search', '^NAME="(.*?)" HCTL="(.*?)" TYPE="(.*?)" SIZE="(.*?)" MODEL="(.*?)" MOUNTPOINT="(.*?)" FSTYPE="(.*?)"$') 
-            | select('defined') 
-            | map('extract', 1, 2, 3, 4, 5, 6, 7)
-            | map('list')
-            | map('zip', ['name', 'hctl', 'type', 'size', 'model', 'mountpoint', 'fstype'])
-            | map('items2dict')
+            lsblk_output.stdout_lines | map('regex_search', '^NAME="(?P<name>.*?)" HCTL="(?P<hctl>.*?)" TYPE="(?P<type>.*?)" SIZE="(?P<size>.*?)" MODEL="(?P<model>.*?)" MOUNTPOINT="(?P<mountpoint>.*?)" FSTYPE="(?P<fstype>.*?)"$')
+            | select('defined')
+            | list
           }}
 
     - name: Display parsed lsblk output
@@ -57,7 +54,7 @@
       ansible.builtin.set_fact:
         lv_info: >-
           {{
-            lvdisplay_output.stdout_lines | join('\n') | regex_findall('VG Name\\s+(\\S+).*?LV Path\\s+(\\S+)', multiline=True) 
+            lvdisplay_output.stdout | regex_findall('VG Name +(?P<vg_name>\\S+)\\n.*?LV Path +(?P<lv_path>\\S+)', multiline=True)
             | map('list')
             | map('zip', ['vg_name', 'lv_path'])
             | map('items2dict')
