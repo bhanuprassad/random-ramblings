@@ -34,7 +34,15 @@
 
     - name: Parse lsblk output
       ansible.builtin.set_fact:
-        disks_info: "{{ lsblk_output.stdout_lines | map('regex_search', '^NAME=\\\"(.*?)\\\" HCTL=\\\"(.*?)\\\" TYPE=\\\"(.*?)\\\" SIZE=\\\"(.*?)\\\" MODEL=\\\"(.*?)\\\" MOUNTPOINT=\\\"(.*?)\\\" FSTYPE=\\\"(.*?)\\\"$') | select('defined') | list | map('extract', {1: 'name', 2: 'hctl', 3: 'type', 4: 'size', 5: 'model', 6: 'mountpoint', 7: 'fstype'}) | list }}"
+        disks_info: >-
+          {{
+            lsblk_output.stdout_lines | map('regex_search', '^NAME="(.*?)" HCTL="(.*?)" TYPE="(.*?)" SIZE="(.*?)" MODEL="(.*?)" MOUNTPOINT="(.*?)" FSTYPE="(.*?)"$') 
+            | select('defined') 
+            | map('extract', 1, 2, 3, 4, 5, 6, 7)
+            | map('list')
+            | map('zip', ['name', 'hctl', 'type', 'size', 'model', 'mountpoint', 'fstype'])
+            | map('items2dict')
+          }}
 
     - name: Display parsed lsblk output
       ansible.builtin.debug:
@@ -47,7 +55,13 @@
 
     - name: Parse lvdisplay output
       ansible.builtin.set_fact:
-        lv_info: "{{ lvdisplay_output.stdout_lines | map('regex_search', '^ *VG Name *([\\w-]+)\\n *LV Path *([\\w-/]+)\\n') | select('defined') | list | map('extract', {1: 'vg_name', 2: 'lv_path'}) | list }}"
+        lv_info: >-
+          {{
+            lvdisplay_output.stdout_lines | join('\n') | regex_findall('VG Name\\s+(\\S+).*?LV Path\\s+(\\S+)', multiline=True) 
+            | map('list')
+            | map('zip', ['vg_name', 'lv_path'])
+            | map('items2dict')
+          }}
 
     - name: Display parsed lvdisplay output
       ansible.builtin.debug:
@@ -61,11 +75,10 @@
                        | rejectattr('fstype', 'eq', '')
                        | selectattr('fstype', 'in', ['xfs', 'ext4'])
                        | rejectattr('mountpoint', 'in', ['/boot', '/boot/efi'])
-                       | map('extract', {
-                            'mountpoint': 'mountpoint',
-                            'device': lambda item: lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='lv_path') | first,
-                            'vg_name': lambda item: lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='vg_name') | first,
-                            'scsi_info': lambda item: item.hctl | regex_replace('^[0-9]+:([0-9]+):([0-9]+):[0-9]+$', '\\1:\\2')
+                       | map('combine', {
+                            'device': lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='lv_path') | first,
+                            'vg_name': lv_info | selectattr('lv_path', 'search', item.mountpoint) | map(attribute='vg_name') | first,
+                            'scsi_info': item.hctl | regex_replace('^[0-9]+:([0-9]+):([0-9]+):[0-9]+$', '\\1:\\2')
                           })
                        | selectattr('vg_name', 'defined')
                        | rejectattr('vg_name', 'in', ['vg0', 'vg00'])
