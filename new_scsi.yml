@@ -22,14 +22,10 @@
       msg: "No mount details found for the specified mount point: {{ mount_point }}"
     when: mount_details.stdout == ""
 
-  # Fix for Ansible 2.12: Choose one of the following methods (comment out the other)
-  - name: Parse PKNAME from mount details (Method 1)
+  # Method 2 (fixed):
+  - name: Parse PKNAME from mount details (Method 2 - Fixed)
     ansible.builtin.set_fact:
-      pkname: "{{ mount_details.stdout | regex_search('PKNAME=\"([^\"]+)\"', 'キャプチャ番号1') | default('') }}"
-
-  # - name: Parse PKNAME from mount details (Method 2)
-  #   ansible.builtin.set_fact:
-  #     pkname: "{{ mount_details.stdout | regex_replace('PKNAME=\"([^\"]+)\"', '', True) | match.group(1) | default('') }}"
+      pkname: "{{ mount_details.stdout | regex_replace('PKNAME=\"([^\"]+)\"', '\\1', True) | default('') }}"
 
   - name: Debug PKNAME
     ansible.builtin.debug:
