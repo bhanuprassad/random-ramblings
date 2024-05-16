@@ -1,6 +1,5 @@
 ---
-- name: Retrieve Physical Disk and SCSI Information for Mount Point
-  hosts: all
+- hosts: all
   become: true
   gather_facts: false
 
@@ -8,41 +7,41 @@
     mount_point: "/app"
 
   tasks:
-    - name: Gather detailed block device mappings
-      ansible.builtin.shell:
-        cmd: "lsblk -o NAME,PKNAME,HCTL,MOUNTPOINT -P | grep 'MOUNTPOINT=\"{{ mount_point }}\"'"
-      register: mount_details
-      changed_when: false
+  - name: Gather detailed block device mappings
+    ansible.builtin.shell:
+      cmd: "lsblk -o NAME,PKNAME,HCTL,MOUNTPOINT -P | grep 'MOUNTPOINT=\"{{ mount_point }}\"'"
+    register: mount_details
+    changed_when: false
 
-    - name: Debug mount details
-      ansible.builtin.debug:
-        msg: "{{ mount_details.stdout_lines }}"
+  - name: Debug mount details (optional)
+    ansible.builtin.debug:
+      msg: "{{ mount_details.stdout_lines }}"
 
-    - name: Fail if no mount details found
-      ansible.builtin.fail:
-        msg: "No mount details found for the specified mount point: {{ mount_point }}"
-      when: mount_details.stdout == ""
+  - name: Fail if no mount details found
+    ansible.builtin.fail:
+      msg: "No mount details found for the specified mount point: {{ mount_point }}"
+    when: mount_details.stdout == ""
 
-    - name: Parse PKNAME from mount details
-      ansible.builtin.set_fact:
-        pkname: "{{ mount_details.stdout | regex_search('PKNAME=\"([^\"]+)\"', '\\1') | default('') }}"
+  - name: Parse PKNAME from mount details (fixed regex)
+    ansible.builtin.set_fact:
+      pkname: "{{ mount_details.stdout | regex_search('PKNAME=([^"]+)', '\\1') | default('') }}"
 
-    - name: Debug PKNAME
-      ansible.builtin.debug:
-        msg: "PKNAME extracted: {{ pkname }}"
+  - name: Debug PKNAME
+    ansible.builtin.debug:
+      msg: "PKNAME extracted: {{ pkname }}"
 
-    - name: Gather SCSI details of the parent kernel device
-      ansible.builtin.shell:
-        cmd: "lsblk -o NAME,HCTL -P | grep 'NAME=\"{{ pkname }}\"'"
-      register: scsi_details
+  - name: Gather SCSI details of the parent kernel device
+    ansible.builtin.shell:
+      cmd: "lsblk -o NAME,HCTL -P | grep 'NAME=\"{{ pkname }}\"'"
+    register: scsi_details
 
-    - name: Extract SCSI HCTL
-      ansible.builtin.set_fact:
-        scsi_hctl: "{{ scsi_details.stdout | regex_search('HCTL=\"([^\"]+)\"', '\\1') | default('N/A') }}"
+  - name: Extract SCSI HCTL
+    ansible.builtin.set_fact:
+      scsi_hctl: "{{ scsi_details.stdout | regex_search('HCTL=\"([^\"]+)\"', '\\1') | default('N/A') }}"
 
-    - name: Display SCSI and physical disk information
-      ansible.builtin.debug:
-        msg: >
-          Mount Point: {{ mount_point }},
-          Physical Disk: /dev/{{ pkname }},
-          SCSI HCTL: {{ scsi_hctl }}
+  - name: Display SCSI and physical disk information
+    ansible.builtin.debug:
+      msg: >
+        Mount Point: {{ mount_point }},
+        Physical Disk: /dev/{{ pkname }},
+        SCSI HCTL: {{ scsi_hctl }}
