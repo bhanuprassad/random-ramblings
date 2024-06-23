@@ -21,18 +21,18 @@ def read_json_from_file(filename):
 
 def parse_hctl(hctl):
     """Parse the HCTL value to extract SCSI channel and target."""
-    if hctl:
-        parts = hctl.split('.')
+    if hctl and ':' in hctl:
+        parts = hctl.split(':')
         if len(parts) >= 3:
             return parts[1], parts[2]  # Channel and Target
     return "", ""
 
-def extract_lvm_info(device, current_disk, disk_info):
+def extract_lvm_info(device, current_disk, disk_info, parent_hctl=""):
     """Recursively extract LVM information from device."""
     if 'children' in device:
         for child in device['children']:
             if child['type'] == 'lvm':
-                hctl = device.get('hctl', "")
+                hctl = parent_hctl if parent_hctl else device.get('hctl', "")
                 scsi_channel, scsi_target = parse_hctl(hctl)
                 disk_info.append({
                     "Disk Name": current_disk,
@@ -45,7 +45,7 @@ def extract_lvm_info(device, current_disk, disk_info):
                     "Type": child.get('type', "")
                 })
             else:
-                extract_lvm_info(child, current_disk, disk_info)
+                extract_lvm_info(child, current_disk, disk_info, device.get('hctl', ""))
 
 def parse_lsblk_json(json_data):
     """Parse the JSON output of lsblk command to get disk and LVM details."""
