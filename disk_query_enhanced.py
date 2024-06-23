@@ -27,33 +27,34 @@ def parse_hctl(hctl):
             return parts[1], parts[2]  # Channel and Target
     return "", ""
 
+def extract_lvm_info(device, current_disk, disk_info):
+    """Recursively extract LVM information from device."""
+    if 'children' in device:
+        for child in device['children']:
+            if child['type'] == 'lvm':
+                hctl = device.get('hctl', "")
+                scsi_channel, scsi_target = parse_hctl(hctl)
+                disk_info.append({
+                    "Disk Name": current_disk,
+                    "LVM Name": child.get('name', ""),
+                    "Mountpoint": child.get('mountpoint', ""),
+                    "HCTL": hctl,
+                    "SCSI Channel": scsi_channel,
+                    "SCSI Target": scsi_target,
+                    "Size": child.get('size', ""),
+                    "Type": child.get('type', "")
+                })
+            else:
+                extract_lvm_info(child, current_disk, disk_info)
+
 def parse_lsblk_json(json_data):
     """Parse the JSON output of lsblk command to get disk and LVM details."""
     disk_info = []
 
-    def extract_lvm_info(device, current_disk):
-        """Recursively extract LVM information from device."""
-        if 'children' in device:
-            for child in device['children']:
-                if child['type'] == 'lvm':
-                    scsi_channel, scsi_target = parse_hctl(device.get('hctl', ""))
-                    disk_info.append({
-                        "Disk Name": current_disk,
-                        "LVM Name": child.get('name', ""),
-                        "Mountpoint": child.get('mountpoint', ""),
-                        "HCTL": device.get('hctl', ""),
-                        "SCSI Channel": scsi_channel,
-                        "SCSI Target": scsi_target,
-                        "Size": child.get('size', ""),
-                        "Type": child.get('type', "")
-                    })
-                else:
-                    extract_lvm_info(child, current_disk)
-
     for device in json_data['blockdevices']:
         if device['type'] == 'disk':
             current_disk = device['name']
-            extract_lvm_info(device, current_disk)
+            extract_lvm_info(device, current_disk, disk_info)
 
     return disk_info
 
