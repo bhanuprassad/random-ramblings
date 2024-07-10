@@ -1,0 +1,34 @@
+---
+- hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    mount_points: []
+
+  tasks:
+  - name: Gather all mount points
+    ansible.builtin.command:
+      cmd: "lsblk -o NAME,PKNAME,HCTL,SIZE,MOUNTPOINT,FSTYPE -P"
+    register: all_mounts
+    changed_when: false
+
+  - name: Filter LVM mounts not in vg00
+    set_fact:
+      mount_points: "{{ mount_points + [item.MOUNTPOINT] }}"
+    loop: "{{ all_mounts.stdout_lines | map('regex_search', 'NAME=\"([^\"]+)\" PKNAME=\"([^\"]*)\" HCTL=\"([^\"]*)\" SIZE=\"([^\"]*)\" MOUNTPOINT=\"([^\"]*)\" FSTYPE=\"([^\"]*)\"') | map('extract', '(?P<NAME>[^ ]+) (?P<PKNAME>[^ ]*) (?P<HCTL>[^ ]*) (?P<SIZE>[^ ]*) (?P<MOUNTPOINT>[^ ]*) (?P<FSTYPE>[^ ]*)') | selectattr('FSTYPE', 'eq', 'lvm') | selectattr('PKNAME', 'search', '^vg00').reject }}"
+
+  - name: Debug filtered mount points
+    ansible.builtin.debug:
+      msg: "Filtered mount points: {{ mount_points }}"
+
+  - name: Ensure mount points are found
+    ansible.builtin.fail:
+      msg: "No valid mount points found."
+    when: mount_points | length == 0
+
+  - name: Process each mount point
+    ansible.builtin.include_tasks: mount_tasks.yml
+    loop: "{{ mount_points }}"
+    loop_control:
+      loop_var: mount_point
