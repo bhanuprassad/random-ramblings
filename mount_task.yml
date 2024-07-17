@@ -1,0 +1,41 @@
+---
+- name: Gather detailed block device mappings for mount point {{ mount_point }}
+  ansible.builtin.shell:
+    cmd: "lsblk -o NAME,PKNAME,HCTL,SIZE,MOUNTPOINT -P | grep 'MOUNTPOINT=\"{{ mount_point }}\"'"
+  register: mount_details
+  changed_when: false
+
+- name: Debug mount details (optional)
+  ansible.builtin.debug:
+    msg: "{{ mount_details.stdout_lines }}"
+
+- name: Fail if no mount details found for mount point {{ mount_point }}"
+  ansible.builtin.fail:
+    msg: "No mount details found for the specified mount point: {{ mount_point }}"
+  when: mount_details.stdout == ""
+
+- name: Parse PKNAME from mount details for mount point {{ mount_point }}"
+  ansible.builtin.set_fact:
+    pkname: "{{ mount_details.stdout | regex_search('PKNAME=\"([^\"]+)\"', '\\1') | first | default('') }}"
+
+- name: Debug PKNAME for mount point {{ mount_point }}"
+  ansible.builtin.debug:
+    msg: "PKNAME extracted for mount point {{ mount_point }}: {{ pkname }}"
+
+- name: Gather SCSI and Size details of the parent kernel device for mount point {{ mount_point }}"
+  ansible.builtin.shell:
+    cmd: "lsblk -o NAME,HCTL,SIZE -P | grep 'NAME=\"{{ pkname }}\"'"
+  register: scsi_details
+
+- name: Extract SCSI HCTL and Size for mount point {{ mount_point }}"
+  ansible.builtin.set_fact:
+    scsi_hctl: "{{ scsi_details.stdout | regex_search('HCTL=\"([^\"]+)\"', '\\1') | first | default('N/A') }}"
+    disk_size: "{{ scsi_details.stdout | regex_search('SIZE=\"([^\"]+)\"', '\\1') | first | default('N/A') }}"
+
+- name: Display SCSI and physical disk information for mount point {{ mount_point }}"
+  ansible.builtin.debug:
+    msg: >
+      Mount Point: {{ mount_point }},
+      Physical Disk: /dev/{{ pkname }},
+      SCSI HCTL: {{ scsi_hctl }},
+      Disk Size: {{ disk_size }}
