@@ -1,0 +1,21 @@
+- name: Process data in batches for MSSQL bulk insert
+  hosts: localhost
+  gather_facts: no
+  vars:
+    dataset: "{{ lookup('file', 'chorus_data.json') | from_json }}"  # Load dataset from JSON file
+    batch_size: 1000
+  tasks:
+    - name: Split dataset into batches
+      set_fact:
+        data_batches: "{{ dataset | batch(batch_size) | list }}"
+
+    - name: Insert each batch into the MSSQL database
+      community.general.mssql_script:
+        login_host: "your_mssql_server"
+        login_user: "your_username"
+        login_password: "your_password"
+        database: "your_database"
+        script: |
+          INSERT INTO your_table (column1, column2, column3)
+          VALUES {% for row in item %} ('{{ row.column1 }}', '{{ row.column2 }}', '{{ row.column3 }}'){% if not loop.last %}, {% endif %}{% endfor %};
+      loop: "{{ data_batches }}"
